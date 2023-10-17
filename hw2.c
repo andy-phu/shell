@@ -2,9 +2,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include<unistd.h> 
+#include <unistd.h>
+#include <signal.h>
 
+pid_t pid; //signal for parent or child
+
+void sigIntHandler(int signo){
+    if(pid == 0){
+        kill(pid,SIGINT);
+
+    }
+}
 
 int main() {
+    signal(SIGINT, sigIntHandler);
+    
     char input[128];
     
     while (1) {
@@ -39,6 +51,26 @@ int main() {
             }
         } else if (strcmp(command, "quit") == 0) {
             break;
+        } else if (strcmp(command, "counter") == 0){
+            pid = fork(); //checks if it is a parent of a child
+            int child_status; //signals when the child is done executing
+
+            if (pid == 0){ //child 
+                printf("hello from child\n");
+                unsigned int i = 0;
+                while(1){
+                    printf("Counter: %d\n", i);
+                    i++;
+                    sleep(1);
+                }
+
+            }
+            else{ //parent
+                printf("hello from parent\n");
+                wait(&child_status);
+                printf("child is done executing\n");
+            }
+
         } else {
             printf("Error: Invalid command.\n");
         }
