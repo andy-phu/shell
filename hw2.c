@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include<unistd.h> 
-#include <unistd.h>
 #include <signal.h>
 
 pid_t pid; //signal for parent or child
@@ -53,6 +52,7 @@ int main() {
             int child_status; //signals when the child is done executing
 
             if (pid == 0){ //child 
+                signal(SIGINT, SIG_DFL);
                 printf("hello from child\n");
                 unsigned int i = 0;
                 while(1){
@@ -64,8 +64,10 @@ int main() {
             }
             else{ //parent
                 printf("hello from parent\n");
-                wait(&child_status);
+                waitpid(pid,&child_status,0);
+
                 printf("child is done executing\n");
+
             }
 
         } else {
