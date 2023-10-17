@@ -7,11 +7,8 @@
 
 pid_t pid; //signal for parent or child
 
-void sigIntHandler(int signo){
-    if(pid == 0){
-        kill(pid,SIGINT);
-
-    }
+void sigIntHandler(){
+    kill(pid,SIGINT);
 }
 
 int main() {
