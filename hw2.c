@@ -1,17 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include<unistd.h> 
+#include <unistd.h> 
 #include <signal.h>
+#include <sys/wait.h>
 
 pid_t pid; //signal for parent or child
+pid_t foreground_pid = -1;
 
-void sigIntHandler(){
-    kill(pid,SIGINT);
+void signal_handler(int signal){
+    if (foreground_pid != -1){
+        kill(pid,SIGINT);
+    }
 }
 
 int main() {
-    signal(SIGINT, sigIntHandler);
+    signal(SIGINT, signal_handler);
     
     char input[128];
     
@@ -47,34 +51,28 @@ int main() {
             }
         } else if (strcmp(command, "quit") == 0) {
             break;
-        } else if (strcmp(command, "counter") == 0){
-            pid = fork(); //checks if it is a parent of a child
-            int child_status; //signals when the child is done executing
-
-            if (pid == 0){ //child 
-                signal(SIGINT, SIG_DFL);
-                printf("hello from child\n");
-                unsigned int i = 0;
-                while(1){
-                    printf("Counter: %d\n", i);
-                    i++;
-                    sleep(1);
-                }
-
-            }
-            else{ //parent
-                printf("hello from parent\n");
-                waitpid(pid,&child_status,0);
-
-                printf("child is done executing\n");
-
-            }
 
         } else {
-            printf("Error: Invalid command.\n");
+            if (access(command, X_OK) == 0) {
+                pid_t pid = fork();
+                int status;
+
+                if (pid == 0) {
+                    // Child process
+                    char *args[] = {command, NULL};
+                    if (execv(command, args) == -1) {
+                        perror("execv");
+                        exit(1);
+                    }
+                } else {
+                    // Parent process
+                    waitpid(pid, &status, 0);
+                }
+            } else {
+                printf("Error: Invalid command.\n");
+            }
         }
     }
-    //test to see if i can make changes
     printf("Shell terminated.\n");
     return 0;
 }
