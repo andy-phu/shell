@@ -8,15 +8,25 @@
 pid_t pid; //signal for parent or child
 pid_t foreground_pid = -1;
 
-void signal_handler(int signal){
+void foreground_handler(int signal){
     if (foreground_pid != -1){
         kill(pid,SIGINT);
     }
 }
 
-int main() {
-    signal(SIGINT, signal_handler);
+void background_handler(int signal){
+    int child_status;
     
+    pid = waitpid(-1, &child_status, WNOHANG);
+    if (pid > 0){
+        printf("child process with PID: %d terminated\n",pid);
+    }
+}
+
+int main() {
+    signal(SIGINT, foreground_handler);
+    signal(SIGCHLD, background_handler);
+
     char input[128];
     
     while (1) {
@@ -29,12 +39,14 @@ int main() {
         }
 
         char *command = strtok(input, " \n");
+        char *arg = strtok(NULL, " \n"); //will check if there is an &
+
         if (command == NULL) {
             continue;
         }
-
+        
         if (strcmp(command, "cd") == 0) {
-            char *arg = strtok(NULL, " \n");
+            //removed the strtok arg here because we need to check for & for stage 3 
             if (arg == NULL) {
                 printf("cd: missing directory\n");
             } else {
@@ -53,20 +65,35 @@ int main() {
             break;
 
         } else {
-            if (access(command, X_OK) == 0) {
+            if (access(command, X_OK) == 0) 
+            {
                 pid_t pid = fork();
                 int status;
+                if (arg != NULL && strcmp(arg, "&") == 0){//run the background task 
+                    if (pid == 0){
+                        // Child process
+                        char *args[] = {command, NULL};
+                        if (execv(command, args) == -1) {
+                            perror("execv");
+                            exit(1);
+                        }
+                    } 
+                    
+                    printf("background process running\n");
 
-                if (pid == 0) {
-                    // Child process
-                    char *args[] = {command, NULL};
-                    if (execv(command, args) == -1) {
-                        perror("execv");
-                        exit(1);
+                }
+                else{
+                    if (pid == 0) {
+                        // Child process
+                        char *args[] = {command, NULL};
+                        if (execv(command, args) == -1) {
+                            perror("execv");
+                            exit(1);
+                        }
+                    } else {
+                        // Parent process
+                        waitpid(pid, &status, 0);
                     }
-                } else {
-                    // Parent process
-                    waitpid(pid, &status, 0);
                 }
             } else {
                 printf("Error: Invalid command.\n");
