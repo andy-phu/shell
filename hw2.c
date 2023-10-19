@@ -70,8 +70,10 @@ int main() {
                 pid_t pid = fork();
                 int status;
                 if (arg != NULL && strcmp(arg, "&") == 0){//run the background task 
+                    printf("%s\n",command);
                     if (pid == 0){
                         // Child process
+                        printf("background execv command");
                         char *args[] = {command, NULL};
                         if (execv(command, args) == -1) {
                             perror("execv");
@@ -87,9 +89,11 @@ int main() {
                         // Child process
                         char *args[] = {command, NULL};
                         if (execv(command, args) == -1) {
+                            execvp(command,args);
                             perror("execv");
                             exit(1);
                         }
+
                     } else {
                         // Parent process
                         waitpid(pid, &status, 0);
