@@ -7,11 +7,42 @@
 
 pid_t pid; //signal for parent or child
 pid_t foreground_pid = -1;
+int job_id_counter = 1;
+
+struct Job{
+    pid_t pid;
+    int job_id;
+    int state; // 0 for Foreground/Running, 1 for Background/Running, 2 for Stopped
+    char* command_line;
+};
+
+struct Job jobs[128];
+
+
 
 void foreground_handler(int signal){
-    if (foreground_pid != -1){
-        kill(pid,SIGINT);
+    //printf("foreground handler %d\n",getpgid(pid));
+    if (foreground_pid == -1 && getpgid(pid) == getpgid(foreground_pid)){
+        printf("trying to kill the background with command\n");
     }
+    else if (foreground_pid != -1){
+        kill(pid,SIGINT);
+
+    }
+}
+
+void suspend_handler(int signal){
+    if (foreground_pid != -1){
+        for (int i = 0; i < job_id_counter; i++) {
+            if (jobs[i].pid == foreground_pid) {
+                jobs[i].state = 2;
+            }
+        }
+        printf("child process with PID: %d suspended\n",foreground_pid);
+        kill(foreground_pid,SIGTSTP);
+        foreground_pid = -1;
+
+    } 
 }
 
 void background_handler(int signal){
@@ -19,6 +50,11 @@ void background_handler(int signal){
     
     pid = waitpid(-1, &child_status, WNOHANG);
     if (pid > 0){
+        for (int i = 0; i < job_id_counter; i++) {
+            if (jobs[i].pid == pid) {
+                jobs[i] = jobs[i+1];
+            }
+        }
         printf("child process with PID: %d terminated\n",pid);
     }
 }
@@ -26,6 +62,7 @@ void background_handler(int signal){
 int main() {
     signal(SIGINT, foreground_handler);
     signal(SIGCHLD, background_handler);
+    signal(SIGTSTP, suspend_handler);
 
     char input[128];
     
@@ -63,40 +100,70 @@ int main() {
             }
         } else if (strcmp(command, "quit") == 0) {
             break;
+        } else if (strcmp(command, "jobs") == 0){
+            for (int i = 0; i < job_id_counter; i++) {
+                if (jobs[i].state != 0) {
+                    char *status;
+                    if (jobs[i].state == 0 || jobs[i].state == 1){
+                        status = "Running";
+                    }else{
+                        status = "Stopped";
+                    }
+
+                    printf("[%d] (%d) %s %s\n", jobs[i].job_id, jobs[i].pid, status, jobs[i].command_line);
+                }
+            }
 
         } else {
             if (access(command, X_OK) == 0) 
             {
+                int waitCondition = WUNTRACED | WCONTINUED;
+                char cl[128];
+                strcpy(cl, command);
                 pid_t pid = fork();
                 int status;
                 if (arg != NULL && strcmp(arg, "&") == 0){//run the background task 
-                    printf("%s\n",command);
-                    if (pid == 0){
-                        // Child process
-                        printf("background execv command");
+                    strcat(cl, " ");
+                    strcat(cl, arg);
+                    // print("background group id %d",getprp());
+                    if (pid == 0) { // Child process
                         char *args[] = {command, NULL};
                         if (execv(command, args) == -1) {
                             perror("execv");
                             exit(1);
                         }
-                    } 
-                    
-                    printf("background process running\n");
+                    }else {
+                        // Parent process
+                        jobs[job_id_counter].pid = pid;
+                        jobs[job_id_counter].job_id = job_id_counter;
+                        jobs[job_id_counter].state = 1;
+                        jobs[job_id_counter].command_line = cl;
+                        job_id_counter++;
+                        setpgid(pid,pid);
+                        printf("pid: %d\n", pid);
+                        printf("%d\n",getpgid(pid));
+                        printf("Background process running\n");
+                    }
 
                 }
                 else{
-                    if (pid == 0) {
+                    if (pid == 0) { //run the foreground task
                         // Child process
                         char *args[] = {command, NULL};
                         if (execv(command, args) == -1) {
-                            execvp(command,args);
                             perror("execv");
                             exit(1);
                         }
-
                     } else {
+                        foreground_pid = getpid();
+                        jobs[job_id_counter].pid = pid;
+                        jobs[job_id_counter].job_id = job_id_counter;
+                        jobs[job_id_counter].state = 0;
+                        jobs[job_id_counter].command_line = cl;
+                        job_id_counter++;
                         // Parent process
-                        waitpid(pid, &status, 0);
+                        waitpid(pid, &status, waitCondition);
+                        foreground_pid = -1;
                     }
                 }
             } else {
