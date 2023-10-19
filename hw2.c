@@ -23,9 +23,21 @@ struct Job jobs[128];
 void foreground_handler(int signal){
     if (foreground_pid != -1){
         kill(pid,SIGINT);
-    } else{
-        return;
     }
+}
+
+void suspend_handler(int signal){
+    if (foreground_pid != -1){
+        for (int i = 0; i < job_id_counter; i++) {
+            if (jobs[i].pid == foreground_pid) {
+                jobs[i].state = 2;
+            }
+        }
+        printf("child process with PID: %d suspended\n",pid);
+        kill(foreground_pid,SIGTSTP);
+        foreground_pid = -1;
+
+    } 
 }
 
 void background_handler(int signal){
@@ -45,7 +57,7 @@ void background_handler(int signal){
 int main() {
     signal(SIGINT, foreground_handler);
     signal(SIGCHLD, background_handler);
-    // signal(SIGTSTP, foreground_handler);
+    signal(SIGTSTP, suspend_handler);
 
     char input[128];
     
@@ -133,8 +145,15 @@ int main() {
                             exit(1);
                         }
                     } else {
+                        foreground_pid = getpid();
+                        jobs[job_id_counter].pid = pid;
+                        jobs[job_id_counter].job_id = job_id_counter;
+                        jobs[job_id_counter].state = 0;
+                        jobs[job_id_counter].command_line = cl;
+                        job_id_counter++;
                         // Parent process
                         waitpid(pid, &status, 0);
+                        foreground_pid = -1;
                     }
                 }
             } else {
