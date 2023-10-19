@@ -33,6 +33,11 @@ void background_handler(int signal){
     
     pid = waitpid(-1, &child_status, WNOHANG);
     if (pid > 0){
+        for (int i = 0; i < job_id_counter; i++) {
+            if (jobs[i].pid == pid) {
+                jobs[i] = jobs[i+1];
+            }
+        }
         printf("child process with PID: %d terminated\n",pid);
     }
 }
@@ -40,6 +45,7 @@ void background_handler(int signal){
 int main() {
     signal(SIGINT, foreground_handler);
     signal(SIGCHLD, background_handler);
+    // signal(SIGTSTP, foreground_handler);
 
     char input[128];
     
@@ -80,7 +86,13 @@ int main() {
         } else if (strcmp(command, "jobs") == 0){
             for (int i = 0; i < job_id_counter; i++) {
                 if (jobs[i].state != 0) {
-                    char *status = (jobs[i].state == 1) ? "Running" : "Stopped";
+                    char *status;
+                    if (jobs[i].state == 0 || jobs[i].state == 1){
+                        status = "Running";
+                    }else{
+                        status = "Stopped";
+                    }
+
                     printf("[%d] (%d) %s %s\n", jobs[i].job_id, jobs[i].pid, status, jobs[i].command_line);
                 }
             }
