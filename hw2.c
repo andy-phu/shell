@@ -26,13 +26,16 @@ void foreground_handler(int signal){
         printf("trying to kill the background with command\n");
     }
     else if (foreground_pid != -1){
-        kill(pid,SIGINT);
+        kill(foreground_pid, SIGINT);
 
     }
 }
 
 void suspend_handler(int signal){
-    if (foreground_pid != -1){
+    if (foreground_pid == -1 && getpgid(pid) == getpgid(foreground_pid)){
+        printf("trying to suspend the background with command\n");
+    }
+    else if (foreground_pid != -1){
         for (int i = 0; i < job_id_counter; i++) {
             if (jobs[i].pid == foreground_pid) {
                 jobs[i].state = 2;
@@ -44,6 +47,7 @@ void suspend_handler(int signal){
 
     } 
 }
+
 
 void background_handler(int signal){
     int child_status;
@@ -59,10 +63,16 @@ void background_handler(int signal){
     }
 }
 
+void continue_handler(int signal){
+    int status;
+    printf("\ncontinue");
+}
+
 int main() {
     signal(SIGINT, foreground_handler);
     signal(SIGCHLD, background_handler);
     signal(SIGTSTP, suspend_handler);
+    signal(SIGCONT, continue_handler);
 
     char input[128];
     
@@ -98,11 +108,73 @@ int main() {
             } else {
                 perror("pwd");
             }
+        }else if (strcmp(command, "fg") == 0) {
+            char percent = arg[0]; //converting percent from a char to a string 
+            int jid = atoi(&arg[1]);
+
+            if (percent == '%'){ //arg[0] would just be the %
+                printf("percent: %c\n",percent);
+                printf("jid: %d\n",jid);
+                for (int i = 0; i < job_id_counter; i++) {
+                    if (jid == i){ //checks to see if the jid that the user entered exists in the job array
+                        jobs[jid].state = 0; //change state to 0, foreground
+                        printf("hello\n");
+                        int status;
+                        if (kill(jobs[jid].pid, SIGCONT) == 0){
+                            foreground_pid = jobs[jid].pid;
+                            waitpid(jobs[jid].pid, &status, WUNTRACED);
+                            foreground_pid = -1;
+                            break; //gets out of the for loop once the foreground has been activated
+                        }
+                    }
+                }
+            }else{
+                int temp_pid = atoi(arg);
+                int status;
+                for (int i = 0; i < job_id_counter; i++) {
+                    if (jobs[i].pid == temp_pid) {
+                        jobs[i].state = 0; //change state to 0, foreground
+                        if (kill(jobs[i].pid, SIGCONT) == 0){
+                            foreground_pid = jobs[i].pid;
+                            waitpid(jobs[i].pid, &status, WUNTRACED);
+                            foreground_pid = -1;
+                        }
+                    }
+                }
+            }
+            }else if (strcmp(command, "bg") == 0) {
+                char percent = arg[0]; //converting percent from a char to a string 
+                int jid = atoi(&arg[1]);
+                printf("percent: %c\n",percent);
+                printf("jid: %d\n",jid);
+                if (percent == '%'){ //arg[0] would just be the %
+                    printf("BG HELLO\n");
+                    int status;
+                    if (kill(jobs[jid].pid, SIGCONT) == 0){ //continues the stopped prcocess
+                        printf("suspended is now in the background\n");
+                        jobs[jid].state = 1; //changes state to the background
+                        setpgid(pid,foreground_pid); //sets the pgid to pid to put it in the background group
+                    }
+                }else{
+                    int temp_pid = atoi(arg);
+                    int status;
+                    if (kill(temp_pid, SIGCONT) == 0){ //continues the stopped prcocess
+                        for (int i = 0; i<job_id_counter; i++){
+                            if (jobs[i].pid == temp_pid){ //finds the right bucket
+                                jobs[jid].state = 1; //changes state to the background
+                                setpgid(pid,foreground_pid); //sets the pgid to pid to put it in the background group
+                                break;
+                            }
+                     
+                        }
+
+                    }
+                }
         } else if (strcmp(command, "quit") == 0) {
             break;
         } else if (strcmp(command, "jobs") == 0){
-            for (int i = 0; i < job_id_counter; i++) {
-                if (jobs[i].state != 0) {
+            for (int i = 1; i < job_id_counter; i++) {
+                if (jobs[i].job_id > 0){
                     char *status;
                     if (jobs[i].state == 0 || jobs[i].state == 1){
                         status = "Running";
@@ -140,8 +212,6 @@ int main() {
                         jobs[job_id_counter].command_line = cl;
                         job_id_counter++;
                         setpgid(pid,pid);
-                        printf("pid: %d\n", pid);
-                        printf("%d\n",getpgid(pid));
                         printf("Background process running\n");
                     }
 
@@ -155,13 +225,13 @@ int main() {
                             exit(1);
                         }
                     } else {
-                        foreground_pid = getpid();
                         jobs[job_id_counter].pid = pid;
                         jobs[job_id_counter].job_id = job_id_counter;
                         jobs[job_id_counter].state = 0;
                         jobs[job_id_counter].command_line = cl;
                         job_id_counter++;
                         // Parent process
+                        foreground_pid = pid;
                         waitpid(pid, &status, waitCondition);
                         foreground_pid = -1;
                     }
